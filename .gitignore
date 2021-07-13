@@ -1,7 +1,10 @@
+.vs/
+
 # Build output directories
 /build
 /build*
 /docker/*.log
+/out
 
 # The downloaded corpora files for benchmark.
 /third_party/corpora

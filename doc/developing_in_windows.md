@@ -57,7 +57,7 @@ vcpkg above.
         },
         {
           "name": "BUILD_GMOCK",
-          "value": "True",
+          "value": "False",
           "type": "BOOL"
         },
         {
@@ -72,6 +72,11 @@ vcpkg above.
         },
         {
           "name": "JPEGXL_ENABLE_VIEWERS",
+          "value": "False",
+          "type": "BOOL"
+        },
+        {
+          "name": "BUILD_TESTING",
           "value": "False",
           "type": "BOOL"
         }
