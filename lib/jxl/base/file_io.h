@@ -16,6 +16,7 @@
 #include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/padded_bytes.h"
 #include "lib/jxl/base/status.h"
+#include "lib/jxl/base/pipe_io.h"
 
 namespace jxl {
 
@@ -55,10 +56,24 @@ class FileWrapper {
 template <typename ContainerType>
 static inline Status ReadFile(const std::string& pathname,
                               ContainerType* JXL_RESTRICT bytes) {
+
+  if (pathname[0] == ':') {
+    void* data;
+    int size = 0;
+    Status result = ReadFromPipe(pathname, &data, &size);
+    if (result && size > 0) {
+      bytes->resize(static_cast<size_t>(size));
+      memcpy(reinterpret_cast<char*>(&(*bytes)[0]), data, size);
+      delete data;
+    }
+    return result;
+  }
+  fprintf(stderr, "Reading file\n");
+
   FileWrapper f(pathname, "rb");
   if (f == nullptr) return JXL_FAILURE("Failed to open file for reading");
 
-    // Ensure it is a regular file
+  // Ensure it is a regular file
 #ifdef _WIN32
   struct __stat64 s = {};
   const int err = _stat64(pathname.c_str(), &s);
@@ -92,6 +107,11 @@ static inline Status ReadFile(const std::string& pathname,
 template <typename ContainerType>
 static inline Status WriteFile(const ContainerType& bytes,
                                const std::string& pathname) {
+
+  if (pathname[0] == ':') {
+    return WriteToPipe(bytes.data(), bytes.size(), pathname);
+  }
+
   FileWrapper f(pathname, "wb");
   if (f == nullptr) return JXL_FAILURE("Failed to open file for writing");
 

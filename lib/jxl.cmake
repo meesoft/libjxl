@@ -32,6 +32,8 @@ set(JPEGXL_INTERNAL_SOURCES_DEC
   jxl/base/descriptive_statistics.cc
   jxl/base/descriptive_statistics.h
   jxl/base/file_io.h
+  jxl/base/pipe_io.cc
+  jxl/base/pipe_io.h
   jxl/base/iaca.h
   jxl/base/os_macros.h
   jxl/base/override.h
