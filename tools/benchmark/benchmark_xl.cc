@@ -487,7 +487,11 @@ void WriteHtmlReport(const std::string& codec_desc,
     std::string html_height = StringPrintf("%zupx", ysize);
     double bpp = tasks[i]->stats.total_compressed_size * 8.0 /
                  tasks[i]->stats.total_input_pixels;
-    std::string compressed_title = StringPrintf("compressed: %f bpp", bpp);
+    double pnorm =
+        tasks[i]->stats.distance_p_norm / tasks[i]->stats.total_input_pixels;
+    double max_dist = tasks[i]->stats.max_distance;
+    std::string compressed_title = StringPrintf(
+        "compressed. bpp: %f, pnorm: %f, max dist: %f", bpp, pnorm, max_dist);
     out_html += "<div onclick=\"toggle3(" + number +
                 ");\" style=\"display:inline-block;width:" + html_width +
                 ";height:" + html_height +
@@ -598,10 +602,10 @@ struct StatPrinter {
 
     const double rmse =
         std::sqrt(t.stats.distance_2 / t.stats.total_input_pixels);
-    const double psnr =
-        t.stats.total_compressed_size == 0
-            ? 0.0
-            : (t.stats.distance_2 == 0) ? 99.99 : (20 * std::log10(1 / rmse));
+    const double psnr = t.stats.total_compressed_size == 0 ? 0.0
+                        : (t.stats.distance_2 == 0)
+                            ? 99.99
+                            : (20 * std::log10(1 / rmse));
     size_t pixels = t.stats.total_input_pixels;
 
     const double enc_mps =
@@ -663,7 +667,7 @@ struct StatPrinter {
     std::string out;
 
     method_stats.PrintMoreStats();  // not concurrent
-    out += method_stats.PrintLine(method, fnames_->size(), /*num_threads=*/1);
+    out += method_stats.PrintLine(method, fnames_->size());
 
     if (Args()->write_html_report) {
       WriteHtmlReport(method, *fnames_, tasks, images,
@@ -671,7 +675,7 @@ struct StatPrinter {
     }
 
     stats_aggregate_.push_back(
-        method_stats.ComputeColumns(method, fnames_->size(), 1));
+        method_stats.ComputeColumns(method, fnames_->size()));
 
     printf("%s", out.c_str());
     fflush(stdout);

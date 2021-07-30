@@ -14,7 +14,9 @@
 
 namespace jxl {
 
-void InvHSqueeze(Image &input, int c, int rc, ThreadPool *pool) {
+void InvHSqueeze(Image &input, uint32_t c, uint32_t rc, ThreadPool *pool) {
+  JXL_ASSERT(c < input.channel.size());
+  JXL_ASSERT(rc < input.channel.size());
   const Channel &chin = input.channel[c];
   const Channel &chin_residual = input.channel[rc];
   // These must be valid since we ran MetaApply already.
@@ -78,7 +80,9 @@ void InvHSqueeze(Image &input, int c, int rc, ThreadPool *pool) {
   input.channel[c] = std::move(chout);
 }
 
-void InvVSqueeze(Image &input, int c, int rc, ThreadPool *pool) {
+void InvVSqueeze(Image &input, uint32_t c, uint32_t rc, ThreadPool *pool) {
+  JXL_ASSERT(c < input.channel.size());
+  JXL_ASSERT(rc < input.channel.size());
   const Channel &chin = input.channel[c];
   const Channel &chin_residual = input.channel[rc];
   // These must be valid since we ran MetaApply already.
@@ -235,6 +239,15 @@ Status MetaSqueeze(Image &image, std::vector<SqueezeParams> *parameters) {
     uint32_t endc = (*parameters)[i].begin_c + (*parameters)[i].num_c - 1;
 
     uint32_t offset;
+    if (beginc < image.nb_meta_channels) {
+      if (endc >= image.nb_meta_channels) {
+        return JXL_FAILURE("Invalid squeeze: mix of meta and nonmeta channels");
+      }
+      if (!in_place)
+        return JXL_FAILURE(
+            "Invalid squeeze: meta channels require in-place residuals");
+      image.nb_meta_channels += (*parameters)[i].num_c;
+    }
     if (in_place) {
       offset = endc + 1;
     } else {
@@ -286,8 +299,17 @@ Status InvSqueeze(Image &input, std::vector<SqueezeParams> parameters,
     } else {
       offset = input.channel.size() + beginc - endc - 1;
     }
+    if (beginc < input.nb_meta_channels) {
+      // This is checked in MetaSqueeze.
+      JXL_ASSERT(input.nb_meta_channels > parameters[i].num_c);
+      input.nb_meta_channels -= parameters[i].num_c;
+    }
+
     for (uint32_t c = beginc; c <= endc; c++) {
       uint32_t rc = offset + c - beginc;
+      // MetaApply should imply that `rc` is within range, otherwise there's a
+      // programming bug.
+      JXL_ASSERT(rc < input.channel.size());
       if ((input.channel[c].w < input.channel[rc].w) ||
           (input.channel[c].h < input.channel[rc].h)) {
         return JXL_FAILURE("Corrupted squeeze transform");

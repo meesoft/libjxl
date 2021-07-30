@@ -288,7 +288,7 @@ Status FrameDecoder::InitFrame(BitReader* JXL_RESTRICT br, ImageBundle* decoded,
   }
   JXL_RETURN_IF_ERROR(
       InitializePassesSharedState(frame_header_, &dec_state_->shared_storage));
-  dec_state_->Init();
+  JXL_RETURN_IF_ERROR(dec_state_->Init());
   modular_frame_decoder_.Init(frame_dim_);
 
   if (decoded->IsJPEG()) {
@@ -394,7 +394,7 @@ Status FrameDecoder::ProcessDCGroup(size_t dc_group_id, BitReader* br) {
                    frame_dim_.dc_group_dim, frame_dim_.dc_group_dim);
   JXL_RETURN_IF_ERROR(modular_frame_decoder_.DecodeGroup(
       mrect, br, 3, 1000, ModularStreamId::ModularDC(dc_group_id),
-      /*zerofill=*/false));
+      /*zerofill=*/false, nullptr, nullptr));
   if (frame_header_.encoding == FrameEncoding::kVarDCT) {
     JXL_RETURN_IF_ERROR(
         modular_frame_decoder_.DecodeAcMetadata(dc_group_id, br, dec_state_));
@@ -422,6 +422,7 @@ void FrameDecoder::FinalizeDC() {
 void FrameDecoder::AllocateOutput() {
   const CodecMetadata& metadata = *frame_header_.nonserialized_metadata;
   if (dec_state_->rgb_output == nullptr && !dec_state_->pixel_callback) {
+    modular_frame_decoder_.MaybeDropFullImage();
     decoded_->SetFromImage(Image3F(frame_dim_.xsize_upsampled_padded,
                                    frame_dim_.ysize_upsampled_padded),
                            dec_state_->output_encoding_info.color_encoding);
@@ -433,11 +434,16 @@ void FrameDecoder::AllocateOutput() {
       dec_state_->extra_channels.emplace_back(
           DivCeil(frame_dim_.xsize_upsampled_padded, ecups),
           DivCeil(frame_dim_.ysize_upsampled_padded, ecups));
-#if MEMORY_SANITIZER
+#if JXL_MEMORY_SANITIZER
       // Avoid errors due to loading vectors on the outermost padding.
+      // Upsample of extra channels requires this padding to be initialized.
+      // TODO(deymo): Remove this and use rects up to {x,y}size_upsampled
+      // instead of the padded one.
       for (size_t y = 0; y < DivCeil(frame_dim_.ysize_upsampled_padded, ecups);
            y++) {
-        for (size_t x = DivCeil(frame_dim_.xsize_upsampled, ecups);
+        for (size_t x = (y < DivCeil(frame_dim_.ysize_upsampled, ecups)
+                             ? DivCeil(frame_dim_.xsize_upsampled, ecups)
+                             : 0);
              x < DivCeil(frame_dim_.xsize_upsampled_padded, ecups); x++) {
           dec_state_->extra_channels.back().Row(y)[x] =
               msan::kSanitizerSentinel;
@@ -577,12 +583,13 @@ Status FrameDecoder::ProcessACGroup(size_t ac_group_id,
       JXL_RETURN_IF_ERROR(modular_frame_decoder_.DecodeGroup(
           mrect, br[i - decoded_passes_per_ac_group_[ac_group_id]], minShift,
           maxShift, ModularStreamId::ModularAC(ac_group_id, i),
-          /*zerofill=*/false));
+          /*zerofill=*/false, dec_state_, decoded_));
     } else if (i >= decoded_passes_per_ac_group_[ac_group_id] + num_passes &&
                force_draw) {
       JXL_RETURN_IF_ERROR(modular_frame_decoder_.DecodeGroup(
           mrect, nullptr, minShift, maxShift,
-          ModularStreamId::ModularAC(ac_group_id, i), /*zerofill=*/true));
+          ModularStreamId::ModularAC(ac_group_id, i), /*zerofill=*/true,
+          dec_state_, decoded_));
     }
   }
   decoded_passes_per_ac_group_[ac_group_id] += num_passes;
